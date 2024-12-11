@@ -1,0 +1,12 @@
+var i,j;
+procedure test;
+var a,b;
+begin
+  a := 3;
+  b := 4;
+end;
+begin
+  i := 1;
+  call test;
+  j := 2;
+end.

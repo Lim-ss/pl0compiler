@@ -180,24 +180,12 @@ typedef struct
 {
 	char name[MAXIDLEN + 1];
 	int  kind; //枚举 ID_CONSTANT, ID_VARIABLE, ID_PROCEDURE
-	int  value;
-} comtab;
+	int  value; //const的值
+	short level; //var、proceure的层级
+	short address; //var相对于bp的偏移，或proceure的起始指令位置
+} table_entry;
 
-comtab table[TXMAX];
-
-/*
-	table的一行，和comtab存储长度相同，平时以comtab结构体的形式存储，
-	当kind为 ID_VARIABLE 或 ID_PROCEDURE 时，强制类型转换为mask解读
-	其实这么做只是为了省点空间，把{comtab.value}和{mask.level，mask.address}存在了同一个偏移位置
-	所以查看table的内容时，如果是ID_VARIABLE 或 ID_PROCEDURE需要(mask*)&table[i]这样子查看，否则只能看到没有意义的数值
-*/
-typedef struct
-{
-	char  name[MAXIDLEN + 1];
-	int   kind; 
-	short level;
-	short address;
-} mask; 
+table_entry table[TXMAX]; 
 
 FILE* infile;
 

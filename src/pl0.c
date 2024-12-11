@@ -249,7 +249,7 @@ void test(symset s1, symset s2, int n)
 
 //////////////////////////////////////////////////////////////////////
 
-int dx;  // data allocation index //下一个分配的临时变量(下一个加入到符号表table中的var)相对于base的偏移，每个block中初始化为3，这是因为0,1,2三个位置分别存了三个内部变量RA,DL,SL(返回地址,动态链,静态链)
+int dx;  // data allocation index //下一个分配的临时变量(下一个加入到符号表table中的var)相对于base的偏移，每个block中初始化为3，这是因为0,1,2三个位置分别存了三个内部变量SL,DL,RA(静态链,动态链,返回地址)
 
 // enter object(constant, variable or procedre) into table.
 /*
@@ -262,8 +262,6 @@ int dx;  // data allocation index //下一个分配的临时变量(下一个加�
 */
 void enter(int kind)
 {
-	mask* mk;
-
 	tx++;
 	strcpy(table[tx].name, id);
 	table[tx].kind = kind;
@@ -278,13 +276,12 @@ void enter(int kind)
 		table[tx].value = num;
 		break;
 	case ID_VARIABLE:
-		mk = (mask*) &table[tx];
-		mk->level = level;
-		mk->address = dx++;
+		table[tx].level = level;
+		table[tx].address = dx++;
 		break;
 	case ID_PROCEDURE:
-		mk = (mask*) &table[tx];
-		mk->level = level;
+		table[tx].level = level;
+		//table[tx].address不是在创建符号表条目时填入的
 		break;
 	} // switch
 } // enter
@@ -396,13 +393,11 @@ void factor(symset fsys)
 			{
 				switch (table[i].kind)
 				{
-					mask* mk;
 				case ID_CONSTANT:
 					gen(LIT, 0, table[i].value);
 					break;
 				case ID_VARIABLE:
-					mk = (mask*) &table[i];
-					gen(LOD, level - mk->level, mk->address);
+					gen(LOD, level - table[i].level, table[i].address);
 					break;
 				case ID_PROCEDURE:
 					error(21); // Procedure identifier can not be in an expression.
@@ -590,7 +585,6 @@ void statement(symset fsys)
 
 	if (sym == SYM_IDENTIFIER)
 	{ // variable assignment
-		mask* mk;
 		if (! (i = position(id)))
 		{
 			error(11); // Undeclared identifier.
@@ -610,10 +604,9 @@ void statement(symset fsys)
 			error(13); // ':=' expected.
 		}
 		expression(fsys);
-		mk = (mask*) &table[i];
 		if (i)
 		{
-			gen(STO, level - mk->level, mk->address);
+			gen(STO, level - table[i].level, table[i].address);
 		}
 	}
 	else if (sym == SYM_CALL)
@@ -631,9 +624,7 @@ void statement(symset fsys)
 			}
 			else if (table[i].kind == ID_PROCEDURE)
 			{
-				mask* mk;
-				mk = (mask*) &table[i];
-				gen(CAL, level - mk->level, mk->address);
+				gen(CAL, level - table[i].level, table[i].address);
 			}
 			else
 			{
@@ -734,7 +725,6 @@ void statement(symset fsys)
 void block(symset fsys)
 {
 	int cx0; // initial code index
-	mask* mk;
 	int block_dx;//进入分析子block之前把父block的dx存起来，分析完子block后再取回，dx的作用具体见dx的注释
 	int savedTx;//进入分析子block之前把父block的tx存起来，分析完子block后再取回，这么做是因为子块中新增的table条目出了子块就无效了
 	symset set1, set;
@@ -746,8 +736,8 @@ void block(symset fsys)
 		如果本block是主函数，则存入符号表第0项的address中，table的第0项默认是空的，新加入的项从第1项开始，所以不会被覆盖（其实可以把第0项看成是主函数的procedure项，只不过里面只填了address）
 		如果本block不是主函数，则进入block的分析函数之前一定已经在符号表中创建了procedure的项，且刚好就是上一条，但是还没存入address，此时存入
 	*/
-	mk = (mask*) &table[tx];
-	mk->address = cx;
+	int procedure_tx = tx;//对应本block的procedure条目在table中的位置
+	table[tx].address = cx;
 	/*
 		block产生的第一条指令一定是无条件跳转指令：跳转到该block对应的过程的地址，这里跳转到0只是占位，后面会修改
 		这么做是因为block中可能里面声明了子block，那么子block的指令会先于本blcok的指令生成
@@ -872,8 +862,8 @@ void block(symset fsys)
 	}
 	while (inset(sym, declbegsys));
 
-	code[mk->address].a = cx;//修改block的第一条指令(JMP)的跳转目标，详见前面的注释
-	mk->address = cx;//修改符号表关于本block的procedure的address，避免了每次都需要经过第一个jmp指令跳转(主函数避免不了)
+	code[table[procedure_tx].address].a = cx;//修改block的第一条指令(JMP)的跳转目标，详见前面的注释
+	table[procedure_tx].address = cx;//修改符号表关于本block的procedure的address，避免了每次都需要经过第一个jmp指令跳转(主函数避免不了)
 	cx0 = cx;
 	gen(INT, 0, block_dx);//生成指令：分配dx大小的运行栈空间(由于可能调用了子block，本block的dx存在了block_dx里)
 	set1 = createset(SYM_SEMICOLON, SYM_END, SYM_NULL);
@@ -910,8 +900,8 @@ void interpret()
 	printf("Begin executing PL/0 program.\n");
 
 	pc = 0;
-	b = 1; //基址寄存器，指向当前DL
-	top = 3; //栈中0, 1, 2三个位置分别存三个内部变量RA, DL, SL(返回地址, 动态链, 静态链)
+	b = 0; //基址寄存器，指向当前SL
+	top = 0; //栈中0, 1, 2三个位置分别存三个内部变量SL, DL, RA(静态链,动态链,返回地址),但是栈空间应该由被调函数开辟，所以即使提前在栈上存入了三个量，top仍然初始化为0
 	stack[1] = stack[2] = stack[3] = 0;
 	do
 	{

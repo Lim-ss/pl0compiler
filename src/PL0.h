@@ -1,3 +1,6 @@
+#ifndef PL0_H    // 防止重复包含
+#define PL0_H
+
 #include <stdio.h>
 
 #define NRW        11     // number of reserved words
@@ -15,6 +18,12 @@
 #define STACKSIZE  1000   // maximum storage
 
 #define MAXINS   8
+
+typedef struct
+{
+	int argumentNum; //最多十个参数
+	int argumentType[10]; //元素类型为枚举 0:var	1:procedure
+} arg;
 
 enum symtype
 {
@@ -52,12 +61,13 @@ enum symtype
 
 enum idtype
 {
-	ID_CONSTANT, ID_VARIABLE, ID_PROCEDURE
+	ID_CONSTANT, ID_VARIABLE, ID_PROCEDURE,
+	ID_ARGUMENT_VARIABLE, ID_ARGUMENT_PROCEDURE
 };
 
 enum opcode
 {
-	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC
+	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, DCAL, MOV
 };
 
 enum oprcode
@@ -111,13 +121,19 @@ char* err_msg[] =
 /* 29 */    "",
 /* 30 */    "",
 /* 31 */    "",
-/* 32 */    "There are too many levels."
+/* 32 */    "There are too many levels.",
+/* 33 */    "identifier expected in the argument list.",
+/* 34 */    "')' expected.",
+/* 35 */    "'(' expected.",
+/* 36 */    "argument must be an identifier.",
+/* 37 */    "argument no match.",
+/* 38 */    "',' expected."
 };
 
 //////////////////////////////////////////////////////////////////////
 char ch;         // last character read
 int  sym;        // last symbol read
-char id[MAXIDLEN + 1]; // last identifier read
+char id[MAXIDLEN + 1]; // last identifier read //读到identifier之外的sym不会刷新这个全局变量
 int  num;        // last number read
 int  cc;         // character count
 int  ll;         // line length
@@ -173,20 +189,25 @@ int ssym[NSYM + 1] =
 //	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC"
 //};
 
+
+
  /*
  	table的一行
  */
-typedef struct
+typedef struct table_entry
 {
 	char name[MAXIDLEN + 1];
-	int  kind; //枚举 ID_CONSTANT, ID_VARIABLE, ID_PROCEDURE
+	int  kind; //枚举 ID_CONSTANT, ID_VARIABLE, ID_PROCEDURE, ID_ARGUMENT_VARIABLE, ID_ARGUMENT_PROCEDURE
 	int  value; //const的值
 	short level; //var、proceure的层级
-	short address; //var相对于bp的偏移，或proceure的起始指令位置
+	short address; //var、arg_var、arg_pro相对于bp的偏移，或proceure的起始指令位置
+	arg argument; //procedure的参数
 } table_entry;
 
 table_entry table[TXMAX]; 
 
 FILE* infile;
+
+#endif // PL0_H
 
 // EOF PL0.h

@@ -70,6 +70,8 @@ void error(int n)
 	printf("^\n");
 	printf("Error %3d: %s\n", n, err_msg[n]);
 	err++;
+	printf("compile stop\n");
+	exit(0);
 } // error
 
 //////////////////////////////////////////////////////////////////////
@@ -250,6 +252,7 @@ void test(symset s1, symset s2, int n)
 //////////////////////////////////////////////////////////////////////
 
 int dx;  // data allocation index //下一个分配的临时变量(下一个加入到符号表table中的var)相对于base的偏移，每个block中初始化为3，这是因为0,1,2三个位置分别存了三个内部变量SL,DL,RA(静态链,动态链,返回地址)
+int argument_location; //下一个分配的参数相对于bp的偏移
 
 // enter object(constant, variable or procedre) into table.
 /*
@@ -283,6 +286,14 @@ void enter(int kind)
 		table[tx].level = level;
 		//table[tx].address不是在创建符号表条目时填入的
 		break;
+	case ID_ARGUMENT_VARIABLE:
+		table[tx].level = level + 1;//参数属于子函数的层次，但是是在父函数中enter的
+		table[tx].address = argument_location--;
+		break;
+	case ID_ARGUMENT_PROCEDURE:
+		table[tx].level = level + 1;//参数属于子函数的层次，但是是在父函数中enter的
+		table[tx].address = argument_location; //这里的address指的是这个参数在栈中相对bp的位置
+		argument_location -= 2;//前一个位置(-0)存作为参数的函数的起始指令地址，后一个位置(-1)存它的静态链
 	} // switch
 } // enter
 
@@ -400,6 +411,12 @@ void factor(symset fsys)
 					gen(LOD, level - table[i].level, table[i].address);
 					break;
 				case ID_PROCEDURE:
+					error(21); // Procedure identifier can not be in an expression.
+					break;
+				case ID_ARGUMENT_VARIABLE:
+					gen(LOD, level - table[i].level, table[i].address);
+					break;
+				case ID_ARGUMENT_PROCEDURE:
 					error(21); // Procedure identifier can not be in an expression.
 					break;
 				} // switch
@@ -589,7 +606,7 @@ void statement(symset fsys)
 		{
 			error(11); // Undeclared identifier.
 		}
-		else if (table[i].kind != ID_VARIABLE)
+		else if (table[i].kind != ID_VARIABLE && table[i].kind != ID_ARGUMENT_VARIABLE)
 		{
 			error(12); // Illegal assignment.
 			i = 0;
@@ -618,19 +635,145 @@ void statement(symset fsys)
 		}
 		else
 		{
-			if (! (i = position(id)))
+			i = position(id);
+			getsym();
+			if (! i)
 			{
 				error(11); // Undeclared identifier.
 			}
-			else if (table[i].kind == ID_PROCEDURE)
+			if (table[i].kind == ID_PROCEDURE || table[i].kind == ID_ARGUMENT_PROCEDURE)
 			{
-				gen(CAL, level - table[i].level, table[i].address);
+				if (sym == SYM_LPAREN)
+				{
+					getsym();
+				}
+				else
+				{
+					error(35);//'(' expected.
+				}
+				instruction temp_instruction[20];//临时的指令，最终需要倒序生成,因为之前已经限定最多十个参数，所以最多20条指令
+				int temp_instruction_num = 0;
+				for (int n = table[i].argument.argumentNum - 1;n >= 0;n--) //倒序将参数存入栈内
+				{
+					if (table[i].argument.argumentType[n] == 0) //匹配一个var参数
+					{
+						if (sym != SYM_IDENTIFIER)
+						{
+							error(36);//argument must be an identifier.
+						}
+						else
+						{
+							int j = position(id);
+							if (table[j].kind == ID_VARIABLE || table[j].kind == ID_ARGUMENT_VARIABLE)
+							{
+								//传参
+								temp_instruction[temp_instruction_num].f = LOD;
+								temp_instruction[temp_instruction_num].l = level - table[j].level;
+								temp_instruction[temp_instruction_num].a = table[j].address;
+								temp_instruction_num++;
+							}
+							else
+							{
+								error(37);//argument no match.
+							}
+
+							getsym();
+							if (n != 0)
+							{
+								if (sym == SYM_COMMA)
+								{
+									getsym();
+								}
+								else
+								{
+									error(38);//',' expected.
+								}
+							}
+						}
+					}
+					else //匹配一个procedure参数
+					{
+						if (sym != SYM_IDENTIFIER)
+						{
+							error(36);//argument must be an identifier.
+						}
+						else
+						{
+							int j = position(id);
+							if (table[j].kind == ID_PROCEDURE)
+							{	
+								//传参，根据层差取得procedure的静态链，即其父函数的bp
+								temp_instruction[temp_instruction_num].f = LOD;
+								temp_instruction[temp_instruction_num].l = level - table[j].level;
+								temp_instruction[temp_instruction_num].a = 0;
+								temp_instruction_num++;
+								//传参，procedure的起始地址，编译时已知
+								temp_instruction[temp_instruction_num].f = LIT;
+								temp_instruction[temp_instruction_num].l = 0;
+								temp_instruction[temp_instruction_num].a = table[j].address;
+								temp_instruction_num++;
+							}
+							else if (table[j].kind == ID_ARGUMENT_PROCEDURE)
+							{
+								//传参，静态链
+								temp_instruction[temp_instruction_num].f = LOD;
+								temp_instruction[temp_instruction_num].l = level - table[j].level;
+								temp_instruction[temp_instruction_num].a = table[j].address - 1;
+								temp_instruction_num++;
+								//传参，起始地址
+								temp_instruction[temp_instruction_num].f = LOD;
+								temp_instruction[temp_instruction_num].l = level - table[j].level;
+								temp_instruction[temp_instruction_num].a = table[j].address;
+								temp_instruction_num++;
+							}
+							else
+							{
+								error(37);//argument no match.
+							}
+
+							getsym();
+							if (n != 0)
+							{
+								if (sym == SYM_COMMA)
+								{
+									getsym();
+								}
+								else
+								{
+									error(38);//',' expected.
+								}
+							}
+						}
+					}
+				}
+				for (int n = temp_instruction_num - 1;n >= 0;n--)
+				{
+					gen(temp_instruction[n].f, temp_instruction[n].l, temp_instruction[n].a);//倒序生成入栈指令，因为参数在栈中是反着排序的
+				}
+				if (sym == SYM_RPAREN)
+				{
+					getsym();
+				}
+				else
+				{
+					error(34);//')' expected.
+				}
+				if (table[i].kind == ID_PROCEDURE)
+				{
+					gen(CAL, level - table[i].level, table[i].address);
+				}
+				else //table[i].kind == ID_ARGUMENT_PROCEDURE
+				{
+					gen(LOD, level - table[i].level, table[i].address - 1); //静态链
+					gen(LOD, level - table[i].level, table[i].address); //起始指令地址
+					gen(DCAL, 0, 0);
+				}
+				gen(INT, 0, table[i].argument.argumentNum); //释放参数占用的栈空间
 			}
 			else
 			{
 				error(15); // A constant or variable can not be called. 
 			}
-			getsym();
 		}
 	} 
 	else if (sym == SYM_IF)
@@ -721,8 +864,10 @@ void statement(symset fsys)
 		将常量、变量、子程序的声明加入符号表(如果有的话)
 		生成INT指令（分析statement之前）
 		生成返回指令（分析statement之后）
+
+	参数procedure_tx对应本block的procedure条目在table中的位置
 */
-void block(symset fsys)
+void block(symset fsys, int procedure_tx)
 {
 	int cx0; // initial code index
 	int block_dx;//进入分析子block之前把父block的dx存起来，分析完子block后再取回，dx的作用具体见dx的注释
@@ -732,12 +877,11 @@ void block(symset fsys)
 	dx = 3;
 	block_dx = dx; 
 	/*
-		下面这两行代码的解释：将下一条要产生的指令的位置存入符号表中上一条的address中，也就是给符号表中的procedure填入它第一条指令的位置
+		下面这两行代码的解释：将下一条要产生的指令的位置存入符号表中对应本block的procedure条目的address中，也就是给符号表中的procedure填入它第一条指令的位置
 		如果本block是主函数，则存入符号表第0项的address中，table的第0项默认是空的，新加入的项从第1项开始，所以不会被覆盖（其实可以把第0项看成是主函数的procedure项，只不过里面只填了address）
 		如果本block不是主函数，则进入block的分析函数之前一定已经在符号表中创建了procedure的项，且刚好就是上一条，但是还没存入address，此时存入
 	*/
-	int procedure_tx = tx;//对应本block的procedure条目在table中的位置
-	table[tx].address = cx;
+	table[procedure_tx].address = cx;
 	/*
 		block产生的第一条指令一定是无条件跳转指令：跳转到该block对应的过程的地址，这里跳转到0只是占位，后面会修改
 		这么做是因为block中可能里面声明了子block，那么子block的指令会先于本blcok的指令生成
@@ -808,10 +952,12 @@ void block(symset fsys)
 		block_dx = dx; //save dx before handling procedure call!
 		while (sym == SYM_PROCEDURE)
 		{ // procedure declarations
+			int next_procedure_tx;
 			getsym();
 			if (sym == SYM_IDENTIFIER)
 			{
 				enter(ID_PROCEDURE);
+				next_procedure_tx = tx;
 				getsym();
 			}
 			else
@@ -819,6 +965,56 @@ void block(symset fsys)
 				error(4); // There must be an identifier to follow 'const', 'var', or 'procedure'.
 			}
 
+			if (sym == SYM_LPAREN) //带参数的过程
+			{
+				getsym();
+				if (sym == SYM_RPAREN) //空参数列表
+				{
+					getsym();
+				}
+				else //非空参数列表
+				{
+					argument_location = -1;//第一个参数在 bp - 1 的位置
+					while (1) 
+					{
+						if (sym == SYM_IDENTIFIER)
+						{
+							getsym();
+							if (sym != SYM_LPAREN) // var参数
+							{
+								enter(ID_ARGUMENT_VARIABLE);
+								table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 0;
+							}
+							else // procedure参数
+							{
+								enter(ID_ARGUMENT_PROCEDURE);
+								table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 1;
+							}
+						}
+						else
+						{
+							error(33);//identifier expected in the argument list.
+						}
+						if (sym != SYM_COMMA)
+						{
+							break;
+						}
+						else
+						{
+							getsym();
+						}
+					}
+					if (sym == SYM_RPAREN)
+					{
+						getsym();
+					}
+					else
+					{
+						error(34); // ')' expected.
+					}
+				}
+				
+			}
 
 			if (sym == SYM_SEMICOLON)
 			{
@@ -833,7 +1029,7 @@ void block(symset fsys)
 			savedTx = tx;
 			set1 = createset(SYM_SEMICOLON, SYM_NULL);
 			set = uniteset(set1, fsys);
-			block(set);
+			block(set,next_procedure_tx);
 			destroyset(set1);
 			destroyset(set);
 			tx = savedTx;
@@ -977,6 +1173,8 @@ void interpret()
 		case LOD:
 			stack[++top] = stack[base(stack, b, i.l) + i.a];
 			break;
+		case MOV: //新增，将栈中某值复制到另一处，栈指针不移动
+			stack[top + i.a] = stack[top + i.l];
 		case STO:
 			stack[base(stack, b, i.l) + i.a] = stack[top];
 			printf("  :=  %d\n", stack[top]);
@@ -989,6 +1187,13 @@ void interpret()
 			stack[top + 3] = pc;
 			b = top + 1;
 			pc = i.a;
+			break;
+		case DCAL: //新增，动态指定静态链和返回地址版本的CAL，调用前先在栈顶按顺序存静态链和返回地址
+			//stack[top] = stack[top]; //静态链SL
+			stack[top + 2] = pc; //返回地址
+			pc = stack[top + 1]; //起始地址
+			stack[top + 1] = b; //动态链DL
+			b = top;
 			break;
 		case INT:
 			top += i.a;
@@ -1056,7 +1261,7 @@ void main ()
 	set1 = createset(SYM_PERIOD, SYM_NULL); //FOLLOW集增加{.}
 	set2 = uniteset(declbegsys, statbegsys); //同步符号集增加{const,var,procedure,begin,call,if,while}
 	set = uniteset(set1, set2);
-	block(set);
+	block(set,0);
 	destroyset(set1);
 	destroyset(set2);
 	destroyset(set);

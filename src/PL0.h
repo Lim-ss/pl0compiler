@@ -17,12 +17,13 @@
 
 #define STACKSIZE  1000   // maximum storage
 
-#define MAXINS   8
+#define MAXINS   13
 
-typedef struct
+typedef struct arg
 {
 	int argumentNum; //最多十个参数
 	int argumentType[10]; //元素类型为枚举 0:var	1:procedure
+	struct arg* child_arg[10];
 } arg;
 
 enum symtype
@@ -67,7 +68,7 @@ enum idtype
 
 enum opcode
 {
-	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, DCAL, MOV
+	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, DCAL, MOV, LEA, LODA, STOA
 };
 
 enum oprcode
@@ -127,7 +128,8 @@ char* err_msg[] =
 /* 35 */    "'(' expected.",
 /* 36 */    "argument must be an identifier.",
 /* 37 */    "argument no match.",
-/* 38 */    "',' expected."
+/* 38 */    "',' expected.",
+/* 39 */    "'var' or 'procedure' expected in the type list."
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -201,7 +203,7 @@ typedef struct table_entry
 	int  value; //const的值
 	short level; //var、proceure的层级
 	short address; //var、arg_var、arg_pro相对于bp的偏移，或proceure的起始指令位置
-	arg argument; //procedure的参数
+	arg argument; //arg_pro、procedure的参数
 } table_entry;
 
 table_entry table[TXMAX]; 

@@ -55,7 +55,7 @@ char csym[NSYM + 1] =
 
 char* mnemonic[MAXINS] =
 {
-	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC"
+	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC", "DCAL", "MOV", "LEA", "LODA", "STOA"
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -653,15 +653,11 @@ void statement(symset fsys)
 				}
 				instruction temp_instruction[20];//临时的指令，最终需要倒序生成,因为之前已经限定最多十个参数，所以最多20条指令
 				int temp_instruction_num = 0;
-				for (int n = table[i].argument.argumentNum - 1;n >= 0;n--) //倒序将参数存入栈内
+				for (int n = 0;n < table[i].argument.argumentNum;n++) //顺序生成临时参数入栈指令，以便后面倒序生成
 				{
-					if (table[i].argument.argumentType[n] == 0) //匹配一个var参数
+					if (table[i].argument.argumentType[n] == 0) //匹配一个var或number参数
 					{
-						if (sym != SYM_IDENTIFIER)
-						{
-							error(36);//argument must be an identifier.
-						}
-						else
+						if(sym == SYM_IDENTIFIER)
 						{
 							int j = position(id);
 							if (table[j].kind == ID_VARIABLE || table[j].kind == ID_ARGUMENT_VARIABLE)
@@ -676,19 +672,18 @@ void statement(symset fsys)
 							{
 								error(37);//argument no match.
 							}
-
-							getsym();
-							if (n != 0)
-							{
-								if (sym == SYM_COMMA)
-								{
-									getsym();
-								}
-								else
-								{
-									error(38);//',' expected.
-								}
-							}
+						}
+						else if(sym == SYM_NUMBER)
+						{
+							//传参
+							temp_instruction[temp_instruction_num].f = LIT;
+							temp_instruction[temp_instruction_num].l = 0;
+							temp_instruction[temp_instruction_num].a = num;
+							temp_instruction_num++;
+						}
+						else
+						{
+							error(36);//argument must be an identifier.
 						}
 					}
 					else //匹配一个procedure参数
@@ -702,47 +697,63 @@ void statement(symset fsys)
 							int j = position(id);
 							if (table[j].kind == ID_PROCEDURE)
 							{	
-								//传参，根据层差取得procedure的静态链，即其父函数的bp
-								temp_instruction[temp_instruction_num].f = LOD;
-								temp_instruction[temp_instruction_num].l = level - table[j].level;
-								temp_instruction[temp_instruction_num].a = 0;
-								temp_instruction_num++;
 								//传参，procedure的起始地址，编译时已知
 								temp_instruction[temp_instruction_num].f = LIT;
 								temp_instruction[temp_instruction_num].l = 0;
 								temp_instruction[temp_instruction_num].a = table[j].address;
 								temp_instruction_num++;
+								//传参，根据层差取得procedure的静态链，即其父函数的bp
+								temp_instruction[temp_instruction_num].f = LEA;
+								temp_instruction[temp_instruction_num].l = level - table[j].level;
+								temp_instruction[temp_instruction_num].a = 0;
+								temp_instruction_num++;
 							}
 							else if (table[j].kind == ID_ARGUMENT_PROCEDURE)
 							{
-								//传参，静态链
-								temp_instruction[temp_instruction_num].f = LOD;
-								temp_instruction[temp_instruction_num].l = level - table[j].level;
-								temp_instruction[temp_instruction_num].a = table[j].address - 1;
-								temp_instruction_num++;
 								//传参，起始地址
 								temp_instruction[temp_instruction_num].f = LOD;
 								temp_instruction[temp_instruction_num].l = level - table[j].level;
 								temp_instruction[temp_instruction_num].a = table[j].address;
+								temp_instruction_num++;
+								//传参，静态链
+								temp_instruction[temp_instruction_num].f = LOD;
+								temp_instruction[temp_instruction_num].l = level - table[j].level;
+								temp_instruction[temp_instruction_num].a = table[j].address - 1;
 								temp_instruction_num++;
 							}
 							else
 							{
 								error(37);//argument no match.
 							}
-
 							getsym();
-							if (n != 0)
+							if (sym == SYM_LPAREN)
 							{
-								if (sym == SYM_COMMA)
-								{
-									getsym();
-								}
-								else
-								{
-									error(38);//',' expected.
-								}
+								getsym();
 							}
+							else
+							{
+								error(35);//'(' expected.
+							}
+							if (sym == SYM_RPAREN)
+							{
+								//getsym();
+							}
+							else
+							{
+								error(34);//')' expected.
+							}
+						}
+					}
+					getsym();
+					if (n != table[i].argument.argumentNum - 1)
+					{
+						if (sym == SYM_COMMA)
+						{
+							getsym();
+						}
+						else
+						{
+							error(38);//',' expected.
 						}
 					}
 				}
@@ -851,7 +862,134 @@ void statement(symset fsys)
 	}
 	test(fsys, phi, 19);
 } // statement
-			
+
+//////////////////////////////////////////////////////////////////////
+/*
+	LL1分析程序——type_list 新增
+		argument_list : (x y,x y,x y,....)
+		x : var 或 procedure
+		y : type_list 或 空
+	语义动作：
+
+	修改argument的子argument
+*/
+void type_list(arg* argument)
+{
+	getsym();
+	if (sym == SYM_RPAREN) //空参数列表
+	{
+		getsym();
+		return;
+	}
+	//非空参数列表
+	while (1)
+	{
+		if (sym == SYM_VAR)
+		{
+			getsym();
+			argument->argumentType[argument->argumentNum] = 0;
+			argument->argumentNum++;
+		}
+		else if (sym == SYM_PROCEDURE)
+		{
+			argument->argumentType[argument->argumentNum] = 1;
+			argument->child_arg[argument->argumentNum] = (arg*)malloc(sizeof(arg));
+			argument->child_arg[argument->argumentNum]->argumentNum = 0;//通过malloc分配的argument不会自动初始化为默认值
+			getsym();
+			if (sym == SYM_LPAREN)
+			{
+				type_list(argument->child_arg[argument->argumentNum]);
+			}
+			argument->argumentNum++;
+		}
+		else
+		{
+			error(39);//'var' or 'procedure' expected in the type list.
+		}
+		if (sym != SYM_COMMA)
+		{
+			break;
+		}
+		else
+		{
+			getsym();
+		}
+	}
+	if (sym == SYM_RPAREN)
+	{
+		getsym();
+	}
+	else
+	{
+		error(34); // ')' expected.
+	}
+}
+
+//////////////////////////////////////////////////////////////////////
+/*
+	LL1分析程序——argument_list 新增
+		argument_list : (ident x,ident x,ident x,....)
+		x : type_list 或 空
+	语义动作：
+
+	enter参数到符号表，修改procedure表项的argument
+*/
+void argument_list(arg* argument)
+{
+	getsym();
+	if (sym == SYM_RPAREN) //空参数列表
+	{
+		getsym();
+		return;
+	}
+	//非空参数列表
+	argument_location = -1;//第一个参数在 bp - 1 的位置
+	while (1)
+	{
+		if (sym == SYM_IDENTIFIER)
+		{
+			getsym();
+			if (sym != SYM_LPAREN) // var参数
+			{
+				enter(ID_ARGUMENT_VARIABLE);
+				argument->argumentType[argument->argumentNum] = 0;
+				argument->argumentNum++;
+			}
+			else // procedure参数
+			{
+				enter(ID_ARGUMENT_PROCEDURE);
+				argument->argumentType[argument->argumentNum] = 1;
+				argument->child_arg[argument->argumentNum] = (arg*)malloc(sizeof(arg));
+				argument->child_arg[argument->argumentNum]->argumentNum = 0;//通过malloc分配的argument不会自动初始化为默认值
+				type_list(argument->child_arg[argument->argumentNum]);
+				table[tx].argument = *(argument->child_arg[argument->argumentNum]);
+				argument->argumentNum++;
+			}
+		}
+		else
+		{
+			error(33);//identifier expected in the argument list.
+		}
+		if (sym != SYM_COMMA)
+		{
+			break;
+		}
+		else
+		{
+			getsym();
+		}
+	}
+	if (sym == SYM_RPAREN)
+	{
+		getsym();
+	}
+	else
+	{
+		error(34); // ')' expected.
+	}
+}
+
+
 //////////////////////////////////////////////////////////////////////
 /*
 	LL1分析程序——block (对应pdf里的程序体) <>表示可有可无
@@ -970,61 +1108,63 @@ void block(symset fsys, int procedure_tx)
 
 			if (sym == SYM_LPAREN) //带参数的过程
 			{
-				getsym();
-				if (sym == SYM_RPAREN) //空参数列表
-				{
-					getsym();
-				}
-				else //非空参数列表
-				{
-					argument_location = -1;//第一个参数在 bp - 1 的位置
-					while (1) 
-					{
-						if (sym == SYM_IDENTIFIER)
-						{
-							getsym();
-							if (sym != SYM_LPAREN) // var参数
-							{
-								enter(ID_ARGUMENT_VARIABLE);
-								table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 0;
-							}
-							else // procedure参数
-							{
-								enter(ID_ARGUMENT_PROCEDURE);
-								table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 1;
-								getsym();
-								if (sym == SYM_RPAREN)
-								{
-									getsym();
-								}
-								else
-								{
-									error(34);//')' expected.
-								}
-							}
-						}
-						else
-						{
-							error(33);//identifier expected in the argument list.
-						}
-						if (sym != SYM_COMMA)
-						{
-							break;
-						}
-						else
-						{
-							getsym();
-						}
-					}
-					if (sym == SYM_RPAREN)
-					{
-						getsym();
-					}
-					else
-					{
-						error(34); // ')' expected.
-					}
-				}
+				argument_list(&table[tx].argument);
+
+				//getsym();
+				//if (sym == SYM_RPAREN) //空参数列表
+				//{
+				//	getsym();
+				//}
+				//else //非空参数列表
+				//{
+				//	argument_location = -1;//第一个参数在 bp - 1 的位置
+				//	while (1) 
+				//	{
+				//		if (sym == SYM_IDENTIFIER)
+				//		{
+				//			getsym();
+				//			if (sym != SYM_LPAREN) // var参数
+				//			{
+				//				enter(ID_ARGUMENT_VARIABLE);
+				//				table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 0;
+				//			}
+				//			else // procedure参数
+				//			{
+				//				enter(ID_ARGUMENT_PROCEDURE);
+				//				table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 1;
+				//				getsym();
+				//				if (sym == SYM_RPAREN)
+				//				{
+				//					getsym();
+				//				}
+				//				else
+				//				{
+				//					error(34);//')' expected.
+				//				}
+				//			}
+				//		}
+				//		else
+				//		{
+				//			error(33);//identifier expected in the argument list.
+				//		}
+				//		if (sym != SYM_COMMA)
+				//		{
+				//			break;
+				//		}
+				//		else
+				//		{
+				//			getsym();
+				//		}
+				//	}
+				//	if (sym == SYM_RPAREN)
+				//	{
+				//		getsym();
+				//	}
+				//	else
+				//	{
+				//		error(34); // ')' expected.
+				//	}
+				//}
 				
 			}
 
@@ -1185,6 +1325,16 @@ void interpret()
 		case LOD:
 			stack[++top] = stack[base(stack, b, i.l) + i.a];
 			break;
+		case LEA: //新增，取变量的地址
+			stack[++top] = base(stack, b, i.l) + i.a;
+			break;
+		case LODA: //新增，读取某地址的值
+			stack[top] = stack[stack[top]];
+			break;
+		case STOA: //新增，存入某值到某个地址
+			stack[stack[top - 1]] = stack[top];
+			top -= 2;
+			break;
 		case MOV: //新增，将栈中某值复制到另一处，栈指针不移动
 			stack[top + i.a] = stack[top + i.l];
 		case STO:
@@ -1201,10 +1351,11 @@ void interpret()
 			pc = i.a;
 			break;
 		case DCAL: //新增，动态指定静态链和返回地址版本的CAL，调用前先在栈顶按顺序存静态链和返回地址
-			//stack[top] = stack[top]; //静态链SL
-			stack[top + 2] = pc; //返回地址
-			pc = stack[top + 1]; //起始地址
-			stack[top + 1] = b; //动态链DL
+			//stack[top - 1] = stack[top - 1]; //静态链SL
+			stack[top + 1] = pc; //返回地址
+			pc = stack[top]; //起始地址
+			stack[top] = b; //动态链DL
+			top--;
 			b = top;
 			break;
 		case INT:

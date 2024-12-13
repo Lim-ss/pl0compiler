@@ -875,7 +875,6 @@ void block(symset fsys, int procedure_tx)
 	symset set1, set;
 
 	dx = 3;
-	block_dx = dx; 
 	/*
 		下面这两行代码的解释：将下一条要产生的指令的位置存入符号表中对应本block的procedure条目的address中，也就是给符号表中的procedure填入它第一条指令的位置
 		如果本block是主函数，则存入符号表第0项的address中，table的第0项默认是空的，新加入的项从第1项开始，所以不会被覆盖（其实可以把第0项看成是主函数的procedure项，只不过里面只填了address）
@@ -949,9 +948,11 @@ void block(symset fsys, int procedure_tx)
 			}
 			while (sym == SYM_IDENTIFIER);
 		} // if
-		block_dx = dx; //save dx before handling procedure call!
 		while (sym == SYM_PROCEDURE)
 		{ // procedure declarations
+			block_dx = dx;//save dx before handling procedure call!
+			
+
 			int next_procedure_tx;
 			getsym();
 			if (sym == SYM_IDENTIFIER)
@@ -964,6 +965,8 @@ void block(symset fsys, int procedure_tx)
 			{
 				error(4); // There must be an identifier to follow 'const', 'var', or 'procedure'.
 			}
+
+			savedTx = tx;//需要放到procedure条目enter之后
 
 			if (sym == SYM_LPAREN) //带参数的过程
 			{
@@ -989,6 +992,15 @@ void block(symset fsys, int procedure_tx)
 							{
 								enter(ID_ARGUMENT_PROCEDURE);
 								table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 1;
+								getsym();
+								if (sym == SYM_RPAREN)
+								{
+									getsym();
+								}
+								else
+								{
+									error(34);//')' expected.
+								}
 							}
 						}
 						else
@@ -1026,7 +1038,7 @@ void block(symset fsys, int procedure_tx)
 			}
 
 			level++;
-			savedTx = tx;
+			//savedTx = tx;这句移动到前面了，因为前面enter了参数，子模块分析结束时时也需要删去
 			set1 = createset(SYM_SEMICOLON, SYM_NULL);
 			set = uniteset(set1, fsys);
 			block(set,next_procedure_tx);
@@ -1048,8 +1060,8 @@ void block(symset fsys, int procedure_tx)
 			{
 				error(5); // Missing ',' or ';'.
 			}
+			dx = block_dx; //restore dx after handling procedure call!
 		} // while
-		dx = block_dx; //restore dx after handling procedure call!
 		set1 = createset(SYM_IDENTIFIER, SYM_NULL);
 		set = uniteset(statbegsys, set1);
 		test(set, declbegsys, 7);
@@ -1061,7 +1073,7 @@ void block(symset fsys, int procedure_tx)
 	code[table[procedure_tx].address].a = cx;//修改block的第一条指令(JMP)的跳转目标，详见前面的注释
 	table[procedure_tx].address = cx;//修改符号表关于本block的procedure的address，避免了每次都需要经过第一个jmp指令跳转(主函数避免不了)
 	cx0 = cx;
-	gen(INT, 0, block_dx);//生成指令：分配dx大小的运行栈空间(由于可能调用了子block，本block的dx存在了block_dx里)
+	gen(INT, 0, dx);//生成指令：分配dx大小的运行栈空间
 	set1 = createset(SYM_SEMICOLON, SYM_END, SYM_NULL);
 	set = uniteset(set1, fsys);
 	statement(set);
@@ -1221,18 +1233,18 @@ void main ()
 	int i;
 	symset set, set1, set2;
 
-	printf("Please input source file name: "); // get file name to be compiled
-	scanf("%s", s);
-	if ((infile = fopen(s, "r")) == NULL)
-	{
-		printf("File %s can't be opened.\n", s);
-		exit(1);
-	}
-	//if ((infile = fopen("input/1.txt", "r")) == NULL)
+	//printf("Please input source file name: "); // get file name to be compiled
+	//scanf("%s", s);
+	//if ((infile = fopen(s, "r")) == NULL)
 	//{
 	//	printf("File %s can't be opened.\n", s);
 	//	exit(1);
 	//}
+	if ((infile = fopen("input/2.txt", "r")) == NULL)
+	{
+		printf("File %s can't be opened.\n", s);
+		exit(1);
+	}
 
 	/*
 		这几行都是创建一些集合，注意SYM_NULL是写在末尾表示没有参数了，不会进入集合中
@@ -1257,6 +1269,8 @@ void main ()
 	kk = MAXIDLEN;
 
 	getsym();
+
+	table[0].kind = table[0].level = table[0].value = table[0].address = -1;//用于debug时提醒该条目仅用于比较，不用于存储符号
 
 	set1 = createset(SYM_PERIOD, SYM_NULL); //FOLLOW集增加{.}
 	set2 = uniteset(declbegsys, statbegsys); //同步符号集增加{const,var,procedure,begin,call,if,while}

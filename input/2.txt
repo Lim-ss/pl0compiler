@@ -1,0 +1,18 @@
+var i,j;
+procedure test1(c,d);
+	var a,b;
+	begin
+		a := c + 5;
+		b := d + 5;
+	end;
+procedure test2(test());
+	begin
+		call test(5,5);
+	end;
+begin
+  i := 1;
+  j := 2;
+  call test2(test1());
+  i := i;
+  j := j;
+end.

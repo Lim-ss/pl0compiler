@@ -1,12 +1,14 @@
 var i,j;
-procedure test(c,d);
-var a,b;
-begin
-  a := c;
-  b := d;
-end;
+procedure test(i,j);
+	var a,b;
+	begin
+		a := i + 1;
+		b := j + 1;
+	end;
 begin
   i := 1;
-  call test(i,j);
   j := 2;
+  call test(i,j);
+  i := 14;
+  j := 14;
 end.

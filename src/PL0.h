@@ -17,7 +17,7 @@
 
 #define STACKSIZE  1000   // maximum storage
 
-#define MAXINS   13
+#define MAXINS   14
 
 typedef struct arg
 {
@@ -69,7 +69,7 @@ enum idtype
 
 enum opcode
 {
-	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, DCAL, MOV, LEA, LODA, STOA
+	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, DCAL, MOV, LEA, LODA, STOA, JNZ
 };
 
 enum oprcode
@@ -130,7 +130,8 @@ char* err_msg[] =
 /* 36 */    "argument must be an identifier.",
 /* 37 */    "argument no match.",
 /* 38 */    "',' expected.",
-/* 39 */    "'var' or 'procedure' expected in the type list."
+/* 39 */    "'var' or 'procedure' expected in the type list.",
+/* 40 */    "'while' expected."
 };
 
 //////////////////////////////////////////////////////////////////////

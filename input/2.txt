@@ -17,3 +17,5 @@ begin
   i := i;
   j := j;
 end.
+
+//用于测试函数传参，参数类型为 var 或 procedure

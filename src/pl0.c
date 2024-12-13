@@ -55,7 +55,7 @@ char csym[NSYM + 1] =
 
 char* mnemonic[MAXINS] =
 {
-	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC", "DCAL", "MOV", "LEA", "LODA", "STOA"
+	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC", "DCAL", "MOV", "LEA", "LODA", "STOA", "JNZ"
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -873,6 +873,25 @@ void statement(symset fsys)
 		gen(JMP, 0, cx1);
 		code[cx2].a = cx; //回填目标地址
 	}
+	else if (sym == SYM_DO)
+	{ 
+		// do while 新增
+		getsym();
+		cx1 = cx;
+		statement(fsys);
+		if (sym == SYM_WHILE)
+		{
+			getsym();
+		}
+		else
+		{
+			error(40);//'while' expected.
+		}
+		set = createset(SYM_NULL);//空集合，用于应付传参要求的，这里我已经不打算做错误恢复处理了
+		condition(set);
+		destroyset(set);
+		gen(JNZ, 0, cx1);
+		}
 	//test(fsys, phi, 19);
 } // statement
 
@@ -1123,62 +1142,6 @@ void block(symset fsys, int procedure_tx)
 			{
 				argument_list(&table[tx].argument);
 
-				//getsym();
-				//if (sym == SYM_RPAREN) //空参数列表
-				//{
-				//	getsym();
-				//}
-				//else //非空参数列表
-				//{
-				//	argument_location = -1;//第一个参数在 bp - 1 的位置
-				//	while (1) 
-				//	{
-				//		if (sym == SYM_IDENTIFIER)
-				//		{
-				//			getsym();
-				//			if (sym != SYM_LPAREN) // var参数
-				//			{
-				//				enter(ID_ARGUMENT_VARIABLE);
-				//				table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 0;
-				//			}
-				//			else // procedure参数
-				//			{
-				//				enter(ID_ARGUMENT_PROCEDURE);
-				//				table[next_procedure_tx].argument.argumentType[table[next_procedure_tx].argument.argumentNum++] = 1;
-				//				getsym();
-				//				if (sym == SYM_RPAREN)
-				//				{
-				//					getsym();
-				//				}
-				//				else
-				//				{
-				//					error(34);//')' expected.
-				//				}
-				//			}
-				//		}
-				//		else
-				//		{
-				//			error(33);//identifier expected in the argument list.
-				//		}
-				//		if (sym != SYM_COMMA)
-				//		{
-				//			break;
-				//		}
-				//		else
-				//		{
-				//			getsym();
-				//		}
-				//	}
-				//	if (sym == SYM_RPAREN)
-				//	{
-				//		getsym();
-				//	}
-				//	else
-				//	{
-				//		error(34); // ')' expected.
-				//	}
-				//}
-				
 			}
 
 			if (sym == SYM_SEMICOLON)
@@ -1387,6 +1350,11 @@ void interpret()
 				pc = i.a;
 			top--;
 			break;
+		case JNZ:
+			if (stack[top] != 0)
+				pc = i.a;
+			top--;
+			break;
 		} // switch
 	}
 	while (pc);
@@ -1409,7 +1377,7 @@ void main ()
 	//	printf("File %s can't be opened.\n", s);
 	//	exit(1);
 	//}
-	if ((infile = fopen("input/1.txt", "r")) == NULL)
+	if ((infile = fopen("input/4.txt", "r")) == NULL)
 	{
 		printf("File %s can't be opened.\n", s);
 		exit(1);

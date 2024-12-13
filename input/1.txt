@@ -13,3 +13,5 @@ begin
 		else if i = 0  then diretion := 0;
 	end;
 end.
+
+//ÓÃÓÚ²âÊÔif then else ºÍ while

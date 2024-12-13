@@ -1,0 +1,19 @@
+
+var i,j;
+begin
+	i := 0;
+	j := 0;
+	do
+	begin
+		i := i + 1;
+	end
+	while i < 10;
+
+	do
+	begin
+		j := j + 1;
+	end
+	while j < 0;
+end.
+
+//ÓÃÓÚ²âÊÔdo while

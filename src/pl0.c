@@ -454,7 +454,7 @@ void factor(symset fsys)
 			 factor(fsys);
 			 gen(OPR, 0, OPR_NEG);
 		}
-		test(fsys, createset(SYM_LPAREN, SYM_NULL), 23);
+		//test(fsys, createset(SYM_LPAREN, SYM_NULL), 23);
 	} // if
 } // factor
 
@@ -589,7 +589,7 @@ void condition(symset fsys)
 		ident:=expression							  根据level差,生成STO指令
 	或	call ident 									  根据level差,生成CAL指令
 	或	begin statement;......statement end			  
-	或	if condition then statement					  生成JPC指令(有回填步骤)
+	或	if condition then statement	<else statement>  生成JPC指令(有回填步骤)
 	或	while condition do statement				  生成JPC指令(有回填步骤)，生成JMP指令
 
 	语义动作：
@@ -804,9 +804,22 @@ void statement(symset fsys)
 			error(16); // 'then' expected.
 		}
 		cx1 = cx;
-		gen(JPC, 0, 0); //目标地址待定
+		gen(JPC, 0, 0); //false入口，目标地址待定
 		statement(fsys);
-		code[cx1].a = cx; //回填目标地址
+		if (sym == SYM_ELSE)
+		{
+			getsym();
+			cx2 = cx;
+			gen(JMP, 0, 0); //出口，目标地址待定
+			code[cx1].a = cx; //回填false入口目标地址
+			statement(fsys);
+			code[cx2].a = cx;
+		}
+		else
+		{
+			code[cx1].a = cx; //回填出口目标地址
+		}
+		
 	}
 	else if (sym == SYM_BEGIN)
 	{ // block
@@ -860,7 +873,7 @@ void statement(symset fsys)
 		gen(JMP, 0, cx1);
 		code[cx2].a = cx; //回填目标地址
 	}
-	test(fsys, phi, 19);
+	//test(fsys, phi, 19);
 } // statement
 
 //////////////////////////////////////////////////////////////////////
@@ -1253,6 +1266,11 @@ void interpret()
 	stack[1] = stack[2] = stack[3] = 0;
 	do
 	{
+		if (top > STACKSIZE)
+		{
+			printf("stack overflow\n");
+			exit(-1);
+		}
 		i = code[pc++];
 		printf("%s\t%d\t%d\n", mnemonic[i.f], i.l, i.a);//新增打印信息，用于输出指令执行的顺序
 		switch (i.f)
@@ -1391,7 +1409,7 @@ void main ()
 	//	printf("File %s can't be opened.\n", s);
 	//	exit(1);
 	//}
-	if ((infile = fopen("input/2.txt", "r")) == NULL)
+	if ((infile = fopen("input/1.txt", "r")) == NULL)
 	{
 		printf("File %s can't be opened.\n", s);
 		exit(1);

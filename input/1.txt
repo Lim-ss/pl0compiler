@@ -1,14 +1,15 @@
-var i,j;
-procedure test(i,j);
-	var a,b;
-	begin
-		a := i + 1;
-		b := j + 1;
-	end;
+var i,diretion;
 begin
-  i := 1;
-  j := 2;
-  call test(i,j);
-  i := 14;
-  j := 14;
+	i := 0;
+	diretion := 0;
+	while 1=1 do
+	begin
+		if diretion = 0
+		then i := i + 1
+		else i := i - 1;
+
+		if i = 10
+		then diretion := 1
+		else if i = 0  then diretion := 0;
+	end;
 end.

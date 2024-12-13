@@ -1,0 +1,8 @@
+procedure child(x);
+	begin
+		x := x + 1;
+		call child(x);
+	end;
+begin
+  call child(0);
+end.

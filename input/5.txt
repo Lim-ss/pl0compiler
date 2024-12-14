@@ -1,0 +1,15 @@
+var i,j,k;
+procedure max(x1,x2) -> var;
+	begin
+		if x1 > x2
+		then return x1
+		else return x2;
+	end;
+begin
+  i := 1;
+  j := 2;
+  call max(i,j) -> k;
+  print k;
+end.
+
+//ÓÃÓÚ²âÊÔreturn

@@ -50,12 +50,13 @@
 //下面这两个数组本来是在PL0.h里面的，由于奇怪的编译错误，所以移到了这里，注释见头文件中原本的位置
 char csym[NSYM + 1] =
 {
-	' ', '+', '-', '*', '/', '(', ')', '=', ',', '.', ';'
+	' ', '+', '*', '/', '(', ')', '=', ',', '.', ';'
 };
 
 char* mnemonic[MAXINS] =
 {
-	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC", "DCAL", "MOV", "LEA", "LODA", "STOA", "JNZ"
+	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPZ", "DCAL", "MOV",
+	"LEA", "LODA", "STOA", "JNZ", "RET", "PRN"
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -194,6 +195,19 @@ void getsym(void)
 		else
 		{
 			sym = SYM_LES;     // <
+		}
+	}
+	else if (ch == '-')
+	{
+		getch();
+		if (ch == '>')
+		{
+			sym = SYM_ARROW;  // -> 新增
+			getch();
+		}
+		else
+		{
+			sym = SYM_MINUS;  // -
 		}
 	}
 	else 
@@ -589,9 +603,11 @@ void condition(symset fsys)
 		ident:=expression							  根据level差,生成STO指令
 	或	call ident 									  根据level差,生成CAL指令
 	或	begin statement;......statement end			  
-	或	if condition then statement	<else statement>  生成JPC指令(有回填步骤)
-	或	while condition do statement				  生成JPC指令(有回填步骤)，生成JMP指令
-
+	或	if condition then statement	<else statement>  生成JPZ指令(有回填步骤)
+	或	while condition do statement				  生成JPZ指令(有回填步骤)，生成JMP指令
+	或	do statement while condition				  新增
+	或	return <expression>							  新增
+	或	print <expression>							  新增
 	语义动作：
 		对应分析式后面
 */
@@ -660,6 +676,10 @@ void statement(symset fsys)
 						if(sym == SYM_IDENTIFIER)
 						{
 							int j = position(id);
+							if (!j)
+							{
+								error(11); // Undeclared identifier.
+							}
 							if (table[j].kind == ID_VARIABLE || table[j].kind == ID_ARGUMENT_VARIABLE)
 							{
 								//传参
@@ -695,6 +715,10 @@ void statement(symset fsys)
 						else
 						{
 							int j = position(id);
+							if (!j)
+							{
+								error(11); // Undeclared identifier.
+							}
 							if (table[j].kind == ID_PROCEDURE)
 							{	
 								//传参，procedure的起始地址，编译时已知
@@ -779,7 +803,52 @@ void statement(symset fsys)
 					gen(LOD, level - table[i].level, table[i].address); //起始指令地址
 					gen(DCAL, 0, 0);
 				}
-				gen(INT, 0, table[i].argument.argumentNum); //释放参数占用的栈空间
+				int argumentStackSpace = 0;//统计参数所占的栈空间，便于后续归还
+				for (int n = 0;n < table[i].argument.argumentNum;n++)
+				{
+					if (table[i].argument.argumentType[n] == 0) //var
+					{
+						argumentStackSpace += 1;
+					}
+					else
+					{
+						argumentStackSpace += 2;
+					}
+				}
+				if (sym == SYM_ARROW) //带返回值的函数
+				{
+					if (table[i].returnvalve != 1)
+					{
+						error(42);//procedure has no return valve
+					}
+					getsym();
+					if (sym == SYM_IDENTIFIER)
+					{
+						int return_var = position(id);
+						if (!return_var)
+						{
+							error(11); // Undeclared identifier.
+						}
+						if (table[return_var].kind != ID_VARIABLE && table[return_var].kind != ID_ARGUMENT_VARIABLE)
+						{
+							error(43); //a variable type expected after ->.
+						}
+						gen(INT, 0, -argumentStackSpace); //释放参数占用的栈空间
+						gen(MOV, argumentStackSpace+1, 2);//移动返回值到top+2，返回值一开始位于原本的bp中(即SL的位置)
+						gen(LEA, level - table[return_var].level, table[return_var].address);//加载返回地址到top+1
+						gen(INT, 0, 1);//将top指针移动到返回值位置
+						gen(STOA, 0, 0);//存返回值到返回地址中
+						getsym();
+					}
+					else
+					{
+						error(43); //a variable type expected after ->.
+					}
+				}
+				else
+				{
+					gen(INT, 0, -argumentStackSpace); //释放参数占用的栈空间
+				}
 			}
 			else
 			{
@@ -804,7 +873,7 @@ void statement(symset fsys)
 			error(16); // 'then' expected.
 		}
 		cx1 = cx;
-		gen(JPC, 0, 0); //false入口，目标地址待定
+		gen(JPZ, 0, 0); //false入口，目标地址待定
 		statement(fsys);
 		if (sym == SYM_ELSE)
 		{
@@ -860,7 +929,7 @@ void statement(symset fsys)
 		destroyset(set1);
 		destroyset(set);
 		cx2 = cx;
-		gen(JPC, 0, 0); //目标地址待定
+		gen(JPZ, 0, 0); //目标地址待定
 		if (sym == SYM_DO)
 		{
 			getsym();
@@ -891,7 +960,37 @@ void statement(symset fsys)
 		condition(set);
 		destroyset(set);
 		gen(JNZ, 0, cx1);
+	}
+	else if (sym == SYM_RETURN)
+	{
+		//return 新增
+		getsym();
+		if (sym == SYM_IDENTIFIER || sym == SYM_NUMBER || sym == SYM_MINUS || sym == SYM_LPAREN) //带返回值返回,条件是下一个sym属于First(expression)
+		{
+			expression(fsys);
+			gen(STO, 0, 0);//直接将expression的值存到当前bp的位置(约定的返回值位置)
+			gen(RET, 0, 0);
 		}
+		else //直接返回
+		{
+			gen(RET, 0, 0);
+		}
+	}
+	else if (sym == SYM_PRINT)
+	{
+		//print 新增
+		getsym();
+		if (sym == SYM_IDENTIFIER || sym == SYM_NUMBER || sym == SYM_MINUS || sym == SYM_LPAREN) //带返回值返回,条件是下一个sym属于First(expression)
+		{
+			expression(fsys);
+			gen(PRN, 0, 0);//直接将expression的值打印并出栈销毁
+		}
+		else //直接返回
+		{
+			error(44);//expression expected after print.
+		}
+	}
+
 	//test(fsys, phi, 19);
 } // statement
 
@@ -1027,7 +1126,7 @@ void argument_list(arg* argument)
 	LL1分析程序——block (对应pdf里的程序体) <>表示可有可无
 		<const constdeclaration(,或;)......constdeclaration;>
 		<var vardeclaration(,或;)......vardeclaration;>
-		<procedure ident;block;>
+		<procedure ident<(....)><->var>;block;>
 		statement
 	语义动作：
 		生成JMP指令
@@ -1141,7 +1240,20 @@ void block(symset fsys, int procedure_tx)
 			if (sym == SYM_LPAREN) //带参数的过程
 			{
 				argument_list(&table[tx].argument);
+			}
 
+			if (sym == SYM_ARROW) //带返回值
+			{
+				getsym();
+				if (sym == SYM_VAR)
+				{
+					getsym();
+					table[next_procedure_tx].returnvalve = 1;
+				}
+				else
+				{
+					error(41);//'var' expected after ->.
+				}
 			}
 
 			if (sym == SYM_SEMICOLON)
@@ -1195,7 +1307,8 @@ void block(symset fsys, int procedure_tx)
 	statement(set);
 	destroyset(set1);
 	destroyset(set);
-	gen(OPR, 0, OPR_RET); // return
+	//gen(OPR, 0, OPR_RET); // return
+	gen(RET, 0, 0);
 	test(fsys, phi, 8); // test for error: Follow the statement is an incorrect symbol.
 	listcode(cx0, cx);
 } // block
@@ -1240,6 +1353,11 @@ void interpret()
 		{
 		case LIT:
 			stack[++top] = i.a;
+			break;
+		case RET: //新增，因为一开始返回用OPR很奇怪，不过一开始的方式并没有删除，仍然可以通过OPR返回
+			top = b - 1;
+			pc = stack[top + 3];
+			b = stack[top + 2];
 			break;
 		case OPR:
 			switch (i.a) // operator
@@ -1318,9 +1436,10 @@ void interpret()
 			break;
 		case MOV: //新增，将栈中某值复制到另一处，栈指针不移动
 			stack[top + i.a] = stack[top + i.l];
+			break;
 		case STO:
 			stack[base(stack, b, i.l) + i.a] = stack[top];
-			printf("  :=  %d\n", stack[top]);
+			//printf("  :=  %d\n", stack[top]);//打印单独改到PRN指令中
 			top--;
 			break;
 		case CAL:
@@ -1345,7 +1464,7 @@ void interpret()
 		case JMP:
 			pc = i.a;
 			break;
-		case JPC:
+		case JPZ:
 			if (stack[top] == 0)
 				pc = i.a;
 			top--;
@@ -1353,6 +1472,10 @@ void interpret()
 		case JNZ:
 			if (stack[top] != 0)
 				pc = i.a;
+			top--;
+			break;
+		case PRN:
+			printf("print: %d\n", stack[top]);
 			top--;
 			break;
 		} // switch
@@ -1377,7 +1500,7 @@ void main ()
 	//	printf("File %s can't be opened.\n", s);
 	//	exit(1);
 	//}
-	if ((infile = fopen("input/4.txt", "r")) == NULL)
+	if ((infile = fopen("input/5.txt", "r")) == NULL)
 	{
 		printf("File %s can't be opened.\n", s);
 		exit(1);

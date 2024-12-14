@@ -3,10 +3,10 @@
 
 #include <stdio.h>
 
-#define NRW        12     // number of reserved words
+#define NRW        14     // number of reserved words
 #define TXMAX      500    // length of identifier table
 #define MAXNUMLEN  14     // maximum number of digits in numbers
-#define NSYM       10     // maximum number of symbols in array ssym and csym
+#define NSYM       9     // maximum number of symbols in array ssym and csym
 #define MAXIDLEN   10     // length of identifiers
 
 #define MAXADDRESS 32767  // maximum address
@@ -17,7 +17,7 @@
 
 #define STACKSIZE  1000   // maximum storage
 
-#define MAXINS   14
+#define MAXINS   16
 
 typedef struct arg
 {
@@ -58,7 +58,10 @@ enum symtype
 	SYM_CONST,
 	SYM_VAR,
 	SYM_PROCEDURE,
-	SYM_ELSE
+	SYM_ELSE,
+	SYM_ARROW,
+	SYM_RETURN,
+	SYM_PRINT
 };
 
 enum idtype
@@ -69,7 +72,7 @@ enum idtype
 
 enum opcode
 {
-	LIT, OPR, LOD, STO, CAL, INT, JMP, JPC, DCAL, MOV, LEA, LODA, STOA, JNZ
+	LIT, OPR, LOD, STO, CAL, INT, JMP, JPZ, DCAL, MOV, LEA, LODA, STOA, JNZ, RET, PRN
 };
 
 enum oprcode
@@ -131,7 +134,11 @@ char* err_msg[] =
 /* 37 */    "argument no match.",
 /* 38 */    "',' expected.",
 /* 39 */    "'var' or 'procedure' expected in the type list.",
-/* 40 */    "'while' expected."
+/* 40 */    "'while' expected.",
+/* 41 */    "'var' expected after ->.",
+/* 42 */    "procedure has no return valve",
+/* 43 */    "a variable type expected after ->.",
+/* 44 */    "expression expected after print."
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -160,20 +167,20 @@ char* word[NRW + 1] =
 {
 	"", /* place holder */
 	"begin", "call", "const", "do", "end","if",
-	"odd", "procedure", "then", "var", "while", "else"
+	"odd", "procedure", "then", "var", "while", "else", "return", "print"
 };
 
 /*识别出关键字后，用于对应填入关键字的类型(sym)，和上面的word数组配合使用*/
 int wsym[NRW + 1] =
 {
-	SYM_NULL, SYM_BEGIN, SYM_CALL, SYM_CONST, SYM_DO, SYM_END,
-	SYM_IF, SYM_ODD, SYM_PROCEDURE, SYM_THEN, SYM_VAR, SYM_WHILE, SYM_ELSE
+	SYM_NULL, SYM_BEGIN, SYM_CALL, SYM_CONST, SYM_DO, SYM_END, SYM_IF, SYM_ODD,
+	SYM_PROCEDURE, SYM_THEN, SYM_VAR, SYM_WHILE, SYM_ELSE, SYM_RETURN, SYM_PRINT
 };
 
 /*识别出运算符，用于对应填入运算符的类型(sym)，和下面的csym数组搭配使用*/
 int ssym[NSYM + 1] =
 {
-	SYM_NULL, SYM_PLUS, SYM_MINUS, SYM_TIMES, SYM_SLASH,
+	SYM_NULL, SYM_PLUS, SYM_TIMES, SYM_SLASH,
 	SYM_LPAREN, SYM_RPAREN, SYM_EQU, SYM_COMMA, SYM_PERIOD, SYM_SEMICOLON
 };
 
@@ -190,7 +197,7 @@ int ssym[NSYM + 1] =
 //
 //char* mnemonic[MAXINS] =
 //{
-//	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPC"
+//	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPZ"
 //};
 
 
@@ -203,9 +210,10 @@ typedef struct table_entry
 	char name[MAXIDLEN + 1];
 	int  kind; //枚举 ID_CONSTANT, ID_VARIABLE, ID_PROCEDURE, ID_ARGUMENT_VARIABLE, ID_ARGUMENT_PROCEDURE
 	int  value; //const的值
-	short level; //var、proceure的层级
-	short address; //var、arg_var、arg_pro相对于bp的偏移，或proceure的起始指令位置
+	int level; //var、proceure的层级
+	int address; //var、arg_var、arg_pro相对于bp的偏移，或proceure的起始指令位置
 	arg argument; //arg_pro、procedure的参数
+	int returnvalve; //是否有返回值
 } table_entry;
 
 table_entry table[TXMAX]; 

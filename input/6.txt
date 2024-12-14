@@ -1,0 +1,42 @@
+var result;
+
+procedure f(level,arg()) -> var;
+	var temp1, temp2;
+	procedure local();
+		begin
+			return level;
+		end;
+
+	begin
+		if level > 10
+		then
+		begin
+			temp2 := level - 1;
+			call f(temp2,local()) -> temp1;
+			return temp1;
+		end
+		else if level > 1
+		then
+		begin
+			temp2 := level - 1;
+			call f(temp2,arg()) -> temp1;
+			return temp1;
+		end
+		else
+		begin
+			call arg() -> temp1;
+			return temp1;
+		end;
+	end;
+
+procedure dummy();
+	begin
+		do nothing;
+	end;
+
+begin
+	call f(17,dummy()) -> result;
+	print result;
+end.
+
+//综合测试，使用的是homework5中的runtime.pdf中最后一题相同的代码逻辑，输出11为正确结果

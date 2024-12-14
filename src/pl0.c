@@ -38,6 +38,8 @@
 
 #pragma warning(disable:4996)
 
+#define INPUTFILE "input/6.txt" //测试用
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -608,6 +610,7 @@ void condition(symset fsys)
 	或	do statement while condition				  新增
 	或	return <expression>							  新增
 	或	print <expression>							  新增
+	或	do nothing									  新增
 	语义动作：
 		对应分析式后面
 */
@@ -819,7 +822,8 @@ void statement(symset fsys)
 				{
 					if (table[i].returnvalve != 1)
 					{
-						error(42);//procedure has no return valve
+						//暂时不对是否有返回值进行检查，如果强行返回不存在的返回值会得到一个不确定的值
+						//error(42);//procedure has no return valve
 					}
 					getsym();
 					if (sym == SYM_IDENTIFIER)
@@ -944,8 +948,15 @@ void statement(symset fsys)
 	}
 	else if (sym == SYM_DO)
 	{ 
-		// do while 新增
+		// do while 或 do nothing 新增
 		getsym();
+		if (sym == SYM_NOTHING) //do nothing
+		{
+			getsym();
+			return;//直接结束statement的分析，并且不生成任何指令
+		}
+
+		//do while
 		cx1 = cx;
 		statement(fsys);
 		if (sym == SYM_WHILE)
@@ -1262,7 +1273,7 @@ void block(symset fsys, int procedure_tx)
 			}
 			else
 			{
-				error(5); // Missing ',' or ';'.
+				error(45); // missing ';' after procedure declaretion.
 			}
 
 			level++;
@@ -1286,7 +1297,7 @@ void block(symset fsys, int procedure_tx)
 			}
 			else
 			{
-				error(5); // Missing ',' or ';'.
+				error(46); // missing ';' after procedure definition finish.
 			}
 			dx = block_dx; //restore dx after handling procedure call!
 		} // while
@@ -1333,6 +1344,7 @@ void interpret()
 	int top;       // top of stack
 	int b;         // program, base, and top-stack register 基址寄存器
 	instruction i; // instruction register
+	int count = 1; // 新增，用于统计实际运行的指令条数
 
 	printf("Begin executing PL/0 program.\n");
 
@@ -1348,7 +1360,8 @@ void interpret()
 			exit(-1);
 		}
 		i = code[pc++];
-		printf("%s\t%d\t%d\n", mnemonic[i.f], i.l, i.a);//新增打印信息，用于输出指令执行的顺序
+		printf("%d\t%s\t%d\t%d\n", count, mnemonic[i.f], i.l, i.a);//新增打印信息，用于输出指令执行的顺序
+		count++;
 		switch (i.f)
 		{
 		case LIT:
@@ -1475,7 +1488,9 @@ void interpret()
 			top--;
 			break;
 		case PRN:
+			printf("\033[1;31m");   // 设置文本为红色
 			printf("print: %d\n", stack[top]);
+			printf("\033[0m"); // 重置文本颜色
 			top--;
 			break;
 		} // switch
@@ -1500,7 +1515,7 @@ void main ()
 	//	printf("File %s can't be opened.\n", s);
 	//	exit(1);
 	//}
-	if ((infile = fopen("input/5.txt", "r")) == NULL)
+	if ((infile = fopen(INPUTFILE, "r")) == NULL)
 	{
 		printf("File %s can't be opened.\n", s);
 		exit(1);

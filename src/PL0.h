@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#define NRW        14     // number of reserved words
+#define NRW        15     // number of reserved words
 #define TXMAX      500    // length of identifier table
 #define MAXNUMLEN  14     // maximum number of digits in numbers
 #define NSYM       9     // maximum number of symbols in array ssym and csym
@@ -61,7 +61,8 @@ enum symtype
 	SYM_ELSE,
 	SYM_ARROW,
 	SYM_RETURN,
-	SYM_PRINT
+	SYM_PRINT,
+	SYM_NOTHING
 };
 
 enum idtype
@@ -138,7 +139,10 @@ char* err_msg[] =
 /* 41 */    "'var' expected after ->.",
 /* 42 */    "procedure has no return valve",
 /* 43 */    "a variable type expected after ->.",
-/* 44 */    "expression expected after print."
+/* 44 */    "expression expected after print.",
+/* 45 */    "missing ';' after procedure declaretion.",
+/* 46 */    "missing ';' after procedure definition finish.",
+
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -166,15 +170,16 @@ instruction code[CXMAX];
 char* word[NRW + 1] =
 {
 	"", /* place holder */
-	"begin", "call", "const", "do", "end","if",
-	"odd", "procedure", "then", "var", "while", "else", "return", "print"
+	"begin", "call", "const", "do", "end","if","odd", "procedure",
+	"then", "var", "while", "else", "return", "print", "nothing"
 };
 
 /*识别出关键字后，用于对应填入关键字的类型(sym)，和上面的word数组配合使用*/
 int wsym[NRW + 1] =
 {
 	SYM_NULL, SYM_BEGIN, SYM_CALL, SYM_CONST, SYM_DO, SYM_END, SYM_IF, SYM_ODD,
-	SYM_PROCEDURE, SYM_THEN, SYM_VAR, SYM_WHILE, SYM_ELSE, SYM_RETURN, SYM_PRINT
+	SYM_PROCEDURE, SYM_THEN, SYM_VAR, SYM_WHILE, SYM_ELSE, SYM_RETURN, SYM_PRINT,
+	SYM_NOTHING
 };
 
 /*识别出运算符，用于对应填入运算符的类型(sym)，和下面的csym数组搭配使用*/

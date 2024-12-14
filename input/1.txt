@@ -7,6 +7,7 @@ begin
 		if diretion = 0
 		then i := i + 1
 		else i := i - 1;
+		print i;
 
 		if i = 10
 		then diretion := 1

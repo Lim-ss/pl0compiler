@@ -6,12 +6,14 @@ begin
 	do
 	begin
 		i := i + 1;
+		print i;
 	end
 	while i < 10;
 
 	do
 	begin
 		j := j + 1;
+		print j;
 	end
 	while j < 0;
 end.

@@ -1,21 +1,26 @@
 var i,j;
+
 procedure test1(c,d);
 	var a,b;
 	begin
 		a := c + 5;
 		b := d + 5;
+		print a + 1;
+		print a + b;
 	end;
+
 procedure test2(test(var,var),e);
 	begin
 		call test(5,5);
-		e := e;
+		print e;
 	end;
+
 begin
   i := 1;
   j := 2;
   call test2(test1(),30);
-  i := i;
-  j := j;
+  print i;
+  print j;
 end.
 
 //用于测试函数传参，参数类型为 var 或 procedure

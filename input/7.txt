@@ -1,0 +1,16 @@
+var i;
+
+begin
+	for(i := 0; i < 10; i := i + 1)
+	begin
+		print i;
+	end;
+
+	for(i := 10; i > 0; i := i - 1)
+	begin
+		print i;
+		if i = 4 then exit;
+	end;
+end.
+
+//用于测试for循环和exit

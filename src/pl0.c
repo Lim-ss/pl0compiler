@@ -38,7 +38,7 @@
 
 #pragma warning(disable:4996)
 
-#define INPUTFILE "input/6.txt" //测试用
+#define INPUTFILE "input/8.txt" //测试用
 
 
 #include <stdio.h>
@@ -58,7 +58,7 @@ char csym[NSYM + 1] =
 char* mnemonic[MAXINS] =
 {
 	"LIT", "OPR", "LOD", "STO", "CAL", "INT", "JMP", "JPZ", "DCAL", "MOV",
-	"LEA", "LODA", "STOA", "JNZ", "RET", "PRN"
+	"LEA", "LODA", "STOA", "JNZ", "RET", "PRN", "EXT", "CPY", "PUSH", "POP"
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -165,7 +165,7 @@ void getsym(void)
 		}
 		else
 		{
-			sym = SYM_NULL;       // illegal?
+			sym = SYM_COLON;       //新增 :
 		}
 	}
 	else if (ch == '>')
@@ -601,16 +601,20 @@ void condition(symset fsys)
 
 //////////////////////////////////////////////////////////////////////
 /*
-	LL1分析程序——statement (对应pdf里的语句) <>表示可有可无
-		ident:=expression							  根据level差,生成STO指令
-	或	call ident 									  根据level差,生成CAL指令
-	或	begin statement;......statement end			  
-	或	if condition then statement	<else statement>  生成JPZ指令(有回填步骤)
-	或	while condition do statement				  生成JPZ指令(有回填步骤)，生成JMP指令
-	或	do statement while condition				  新增
-	或	return <expression>							  新增
-	或	print <expression>							  新增
-	或	do nothing									  新增
+	LL1分析程序——statement (对应pdf里的语句) <>表示可有可无, <<表示循环多次>>
+		ident:=expression								根据level差,生成STO指令
+	或	call ident 										根据level差,生成CAL指令
+	或	begin statement;......statement end				
+	或	if condition then statement	<else statement>	生成JPZ指令(有回填步骤)
+	或	while condition do statement					生成JPZ指令(有回填步骤)，生成JMP指令
+	或	do statement while condition					新增
+	或	return <expression>								新增
+	或	print <expression>								新增
+	或	do nothing										新增
+	或  for(statement;condition;statement) statement		新增
+	或	exit											新增
+	或	switch expression begin <<case number: statement>>  end		新增
+
 	语义动作：
 		对应分析式后面
 */
@@ -1001,6 +1005,153 @@ void statement(symset fsys)
 			error(44);//expression expected after print.
 		}
 	}
+	else if (sym == SYM_FOR)
+	{
+		/*
+			整体分析结构 for(S1; C; S2) S3
+
+					[S1]
+			cx1:	[C]
+			cx2:	JNZ		cx3
+			cx2+1:	JMP		cx4
+			cx2+2:	[S2]
+					JMP		cx1
+			cx3:	[S3]
+					JMP		cx2+2
+			cx4:
+		*/
+
+		getsym();
+		if (sym == SYM_LPAREN)
+			getsym();
+		else
+			error(34);//')' expected.
+
+		statement(fsys); //对应初始执行一次的语句
+		if (sym == SYM_SEMICOLON)
+			getsym();
+		else
+			error(10);//';' expected.
+
+		int cx1 = cx; //condition的起点
+		condition(fsys);
+		int cx2 = cx; //JNZ的位置,回填用
+		gen(JNZ, 0, 0); //true跳转，待回填
+		gen(JMP, 0, 0); //false跳转，待回填
+		if (sym == SYM_SEMICOLON)
+			getsym();
+		else
+			error(10);//';' expected.
+
+		statement(fsys); //对应每次循环结束执行的语句
+		gen(JMP, 0, cx1);
+
+		if (sym == SYM_RPAREN)
+			getsym();
+		else
+			error(35);//')' expected.
+
+		int cx3 = cx; //循环体的起点
+		statement(fsys); //循环体语句
+		gen(JMP, 0, cx2 + 2);
+
+		int cx4 = cx; //结束出口
+
+		//回填
+		code[cx2].a = cx3;
+		code[cx2 + 1].a = cx4;
+
+	}
+	else if (sym == SYM_EXIT)
+	{
+		getsym();
+		gen(EXT, 0, 0);
+	}
+	else if (sym == SYM_SWITCH)
+	{
+		//新增switch expression begin << case number: statement >> end
+		/*
+			指令结构：
+					[expression]
+					POP
+
+					PUSH
+					LIT		num1
+					OPR=
+			cx1		JPZ		━━━━━━━━━━━━┓
+					[S1]				┃
+			jcx[1]	JMP		cx_exit		┃
+										┃
+					PUSH	<━━━━━━━━━━━┛
+					LIT		num2
+					OPR=
+			cx1		JPZ		━━━━━━━━━━━━┓
+					[S2]				┃
+			jcx[2]	JMP		cx_exit		┃
+									
+					......			......
+
+										┃
+					PUSH	<━━━━━━━━━━━┛
+					LIT		numN
+					OPR=
+			cx1		JPZ		━━━━━━━━━━━━┓
+					[SN]				┃
+			jcx[N]	JMP		cx_exit		┃
+										┃
+			cx_exit			<━━━━━━━━━━━┛
+		
+		*/
+
+		getsym();
+		if (sym == SYM_IDENTIFIER || sym == SYM_NUMBER || sym == SYM_MINUS || sym == SYM_LPAREN) //带返回值返回,条件是下一个sym属于First(expression)
+		{
+			expression(fsys);
+			gen(POP, 0, 0); //将比较值存入寄存器内，以便后面每个case拿出来比较数字
+		}
+		else //直接返回
+		{
+			error(47);//expression expected after switch.
+		}
+		if (sym == SYM_BEGIN)
+			getsym();
+		else
+			error(48);//'begin' expected.
+		int case_num = 0;
+		int jcx[20]; //约定最多有20个case
+		while (sym == SYM_CASE)
+		{
+			getsym();
+			if (sym != SYM_NUMBER)
+			{
+				error(51);//number kind expected after 'case'.
+			}
+			int number = num;
+			getsym();
+			if (sym == SYM_COLON)
+				getsym();
+			else
+				error(52);//':' expected.
+			
+			gen(PUSH, 0, 0);
+			gen(LIT, 0, number);
+			gen(OPR, 0, OPR_EQU);
+			cx1 = cx;
+			gen(JPZ, 0, 0); //false跳转，待回填
+			statement(fsys);
+			jcx[case_num++] = cx;
+			gen(JMP, 0, 0); //switch出口，待回填
+			code[cx1].a = cx; //回填上一个false跳转
+		}
+		for (int i = 0;i < case_num;i++)
+		{
+			code[jcx[i]].a = cx; //回填所有的switch出口
+		}
+		if (sym == SYM_END)
+			getsym();
+		else
+			error(49);//'end' expected.
+	}
 
 	//test(fsys, phi, 19);
 } // statement
@@ -1345,6 +1496,7 @@ void interpret()
 	int b;         // program, base, and top-stack register 基址寄存器
 	instruction i; // instruction register
 	int count = 1; // 新增，用于统计实际运行的指令条数
+	int r;         // 新增，通用寄存器，通过push和pop操作
 
 	printf("Begin executing PL/0 program.\n");
 
@@ -1487,11 +1639,23 @@ void interpret()
 				pc = i.a;
 			top--;
 			break;
-		case PRN:
+		case PRN:	//新增，打印数值
 			printf("\033[1;31m");   // 设置文本为红色
 			printf("print: %d\n", stack[top]);
 			printf("\033[0m"); // 重置文本颜色
 			top--;
+			break;
+		case EXT:	//新增，结束运行
+			pc = -1; 
+			break;
+		case CPY:	//新增，复制栈顶元素
+			stack[++top] = stack[top - 1];
+			break;
+		case PUSH:	//新增，将通用寄存器r的值压入栈内
+			stack[++top] = r;
+			break;
+		case POP:	//新增，将栈顶的值弹出到通用寄存器r
+			r = stack[top--];
 			break;
 		} // switch
 	}

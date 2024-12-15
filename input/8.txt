@@ -1,0 +1,23 @@
+var i;
+
+begin
+	i := 14;
+
+	switch i - 10
+	begin
+		case 1:
+			print 1
+		case 2:
+			print 2
+		case 3:
+			print 3
+		case 4:
+			print 4
+		case 5:
+			print 5
+		case 6:
+			print 6
+	end;
+end.
+
+//ÓÃÓÚ²âÊÔswitch

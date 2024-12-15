@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#define NRW        15     // number of reserved words
+#define NRW        19     // number of reserved words
 #define TXMAX      500    // length of identifier table
 #define MAXNUMLEN  14     // maximum number of digits in numbers
 #define NSYM       9     // maximum number of symbols in array ssym and csym
@@ -17,7 +17,7 @@
 
 #define STACKSIZE  1000   // maximum storage
 
-#define MAXINS   16
+#define MAXINS   20
 
 typedef struct arg
 {
@@ -62,7 +62,12 @@ enum symtype
 	SYM_ARROW,
 	SYM_RETURN,
 	SYM_PRINT,
-	SYM_NOTHING
+	SYM_NOTHING,
+	SYM_FOR,
+	SYM_SWITCH,
+	SYM_CASE,
+	SYM_EXIT,
+	SYM_COLON
 };
 
 enum idtype
@@ -73,7 +78,8 @@ enum idtype
 
 enum opcode
 {
-	LIT, OPR, LOD, STO, CAL, INT, JMP, JPZ, DCAL, MOV, LEA, LODA, STOA, JNZ, RET, PRN
+	LIT, OPR, LOD, STO, CAL, INT, JMP, JPZ, DCAL, MOV,
+	LEA, LODA, STOA, JNZ, RET, PRN, EXT, CPY, PUSH, POP
 };
 
 enum oprcode
@@ -142,7 +148,12 @@ char* err_msg[] =
 /* 44 */    "expression expected after print.",
 /* 45 */    "missing ';' after procedure declaretion.",
 /* 46 */    "missing ';' after procedure definition finish.",
-
+/* 47 */    "expression expected after switch.",
+/* 48 */    "'begin' expected.",
+/* 49 */    "'end' expected.",
+/* 50 */    "'case' expected.",
+/* 51 */    "number kind expected after 'case'.",
+/* 52 */    "':' expected."
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -170,8 +181,9 @@ instruction code[CXMAX];
 char* word[NRW + 1] =
 {
 	"", /* place holder */
-	"begin", "call", "const", "do", "end","if","odd", "procedure",
-	"then", "var", "while", "else", "return", "print", "nothing"
+	"begin", "call", "const", "do", "end","if","odd", "procedure", 
+	"then", "var", "while", "else", "return", "print", "nothing",
+	"for", "switch", "case", "exit"
 };
 
 /*识别出关键字后，用于对应填入关键字的类型(sym)，和上面的word数组配合使用*/
@@ -179,7 +191,7 @@ int wsym[NRW + 1] =
 {
 	SYM_NULL, SYM_BEGIN, SYM_CALL, SYM_CONST, SYM_DO, SYM_END, SYM_IF, SYM_ODD,
 	SYM_PROCEDURE, SYM_THEN, SYM_VAR, SYM_WHILE, SYM_ELSE, SYM_RETURN, SYM_PRINT,
-	SYM_NOTHING
+	SYM_NOTHING, SYM_FOR, SYM_SWITCH, SYM_CASE, SYM_EXIT
 };
 
 /*识别出运算符，用于对应填入运算符的类型(sym)，和下面的csym数组搭配使用*/
